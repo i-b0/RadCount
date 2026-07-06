@@ -141,15 +141,98 @@ def check_disk_space():
 
 # ─── Virtual Environment ─────────────────────────────────────
 
-def ensure_venv():
+def _find_python312():
+    """Find a Python 3.12 interpreter on Windows (needed for CUDA PyTorch)."""
+    if platform.system() != "Windows":
+        return None
+
+    candidates = []
+
+    # Check py launcher first (most reliable on Windows)
+    try:
+        result = subprocess.run(
+            ["py", "-3.12", "-c", "import sys; print(sys.executable)"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            path = result.stdout.strip()
+            if path and Path(path).exists():
+                return path
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+
+    # Check common install locations
+    local_appdata = os.environ.get("LOCALAPPDATA", "")
+    if local_appdata:
+        candidates.append(Path(local_appdata) / "Programs" / "Python" / "Python312" / "python.exe")
+    candidates.append(Path("C:/Python312/python.exe"))
+    candidates.append(Path("C:/Program Files/Python312/python.exe"))
+
+    for p in candidates:
+        if p.exists():
+            return str(p)
+
+    return None
+
+
+def _install_python312():
+    """Attempt to install Python 3.12 via winget."""
+    print_status("Installing Python 3.12 for CUDA support...")
+    try:
+        result = subprocess.run(
+            ["winget", "install", "Python.Python.3.12",
+             "--accept-package-agreements", "--accept-source-agreements"],
+            timeout=300,
+        )
+        if result.returncode == 0:
+            # winget installs py launcher, try it
+            return _find_python312()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return None
+
+
+def ensure_venv(gpu_info):
+    """Create venv, using Python 3.12 if GPU detected and current Python is 3.13+."""
     if VENV_DIR.exists() and VENV_PYTHON.exists():
+        # Check existing venv Python version
+        try:
+            result = subprocess.run(
+                [str(VENV_PYTHON), "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0:
+                venv_ver = result.stdout.strip()
+                print_success(f"Virtual environment found (Python {venv_ver})")
+                return True
+        except (subprocess.TimeoutExpired, OSError):
+            pass
         print_success("Virtual environment found")
         return True
+
+    # Decide which Python to use for the venv
+    python_exe = sys.executable
+    py_ver = sys.version_info[:2]
+
+    # If GPU detected and Python 3.13+, we need Python 3.12 for CUDA PyTorch
+    if gpu_info["type"] == "cuda" and py_ver >= (3, 13):
+        print_warning(
+            f"Python {py_ver[0]}.{py_ver[1]} detected — PyTorch CUDA wheels require Python 3.12"
+        )
+        py312 = _find_python312()
+        if not py312:
+            py312 = _install_python312()
+        if py312:
+            print_success(f"Found Python 3.12: {py312}")
+            python_exe = py312
+        else:
+            print_warning("Python 3.12 not found — will use CPU PyTorch (slower)")
+            print_warning("Install Python 3.12 for GPU acceleration: winget install Python.Python.3.12")
 
     print_status("Creating virtual environment...")
     try:
         subprocess.run(
-            [sys.executable, "-m", "venv", str(VENV_DIR)], check=True,
+            [python_exe, "-m", "venv", str(VENV_DIR)], check=True,
         )
         print_success("Virtual environment created")
         return True
@@ -186,10 +269,35 @@ def _check_torch_cuda():
     return False, False, None
 
 
+def _get_venv_python_version():
+    """Get Python version tuple from the venv."""
+    try:
+        result = subprocess.run(
+            [str(VENV_PYTHON), "-c",
+             "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            parts = result.stdout.strip().split(".")
+            return (int(parts[0]), int(parts[1]))
+    except (subprocess.TimeoutExpired, OSError, ValueError, IndexError):
+        pass
+    return sys.version_info[:2]  # fallback to host Python
+
+
 def _pytorch_index_url(gpu_info):
     """Pick the right PyTorch wheel index for the detected CUDA version."""
     if gpu_info["type"] != "cuda":
         return None  # default PyPI → CPU torch
+
+    # PyTorch CUDA wheels currently only support Python 3.9-3.12
+    py_ver = _get_venv_python_version()
+    if py_ver >= (3, 13):
+        print_warning(
+            f"Venv Python {py_ver[0]}.{py_ver[1]} — PyTorch CUDA wheels "
+            "not yet available. Using CPU-only PyTorch."
+        )
+        return None
 
     cuda = gpu_info.get("cuda_version") or ""
     if not cuda:
@@ -555,7 +663,7 @@ def main():
     # ── Virtual environment ──
     print_header("Virtual Environment")
 
-    if not ensure_venv():
+    if not ensure_venv(gpu_info):
         sys.exit(1)
     upgrade_pip()
 
