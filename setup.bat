@@ -1,4 +1,19 @@
 @echo off
+REM ============================================================================
+REM  RadCount setup — one-click installer for Windows.
+REM
+REM  Just double-click this file. It does two things:
+REM    1. Makes sure Python is installed (installs 3.12 if it isn't).
+REM    2. Hands off to startup.py, which builds the virtual environment,
+REM       downloads llama.cpp + the LLM model, and launches the app.
+REM
+REM  A GPU is optional. Without an NVIDIA card everything still runs on CPU.
+REM
+REM  Prefer to do it yourself? You only need Python 3.10-3.12 installed, then:
+REM        python startup.py
+REM  That single command performs every step below (2) on its own. This .bat
+REM  exists only to install Python for you and then call it.
+REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title RadCount Setup
@@ -166,7 +181,10 @@ if !errorlevel! equ 0 (
     echo  [!] LLM inference will use CPU — this is much slower.
 )
 
-REM ── Run startup.py ──────────────────────────────────────────
+REM ── Hand off to startup.py ──────────────────────────────────
+REM  Everything past this point (venv, PyTorch, llama.cpp, model download,
+REM  migrations, and launching the web app) is done by startup.py. If you
+REM  ever want to run it yourself, this is the exact command it uses.
 echo.
 echo  [*] Launching Python setup...
 echo  ============================================================

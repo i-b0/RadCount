@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from pathlib import Path
@@ -1261,6 +1261,27 @@ def delete_large(request):
             'success': False,
             'error': f'Failed to delete file: {str(e)}'
         }, status=500)
+
+
+@require_http_methods(["GET"])
+def export_large(request):
+    """Download the current reports CSV as a file attachment."""
+    large_data_dir = PROJECT_ROOT / "large_data"
+    csv_files = list(large_data_dir.glob("*.csv")) if large_data_dir.exists() else []
+
+    if not csv_files:
+        return JsonResponse({
+            'success': False,
+            'error': 'No CSV file to export'
+        }, status=404)
+
+    csv_file = csv_files[0]
+    return FileResponse(
+        open(csv_file, 'rb'),
+        as_attachment=True,
+        filename=csv_file.name,
+        content_type='text/csv',
+    )
 
 
 @require_http_methods(["GET"])

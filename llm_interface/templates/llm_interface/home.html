@@ -512,6 +512,7 @@
                         {% if csv_metadata %}
                             <span style="font-size: 0.9em; color: #374151; font-weight: 500;">{{ csv_metadata.filename }}</span>
                             <label for="large-file-upload" style="padding: 4px 10px; background: #e5e7eb; color: #374151; border-radius: 4px; cursor: pointer; font-size: 0.8em;">Replace</label>
+                            <a href="/llm/export-large/" style="padding: 4px 10px; background: #e5e7eb; color: #374151; border-radius: 4px; cursor: pointer; font-size: 0.8em; text-decoration: none;" title="Download the current reports CSV">Export CSV</a>
                             <span style="color: #d1d5db;">|</span>
                             <label for="entry-number" style="color: #6b7280; font-size: 0.85em;">Entry</label>
                             <input
@@ -607,6 +608,12 @@
                     >
                         📊 Tests
                     </button>
+                    <!-- Annotations (entities.json) import/export -->
+                    <div style="margin-left: auto; display: flex; align-items: center; gap: 6px;">
+                        <button onclick="exportEntities()" style="padding: 4px 10px; background: #e5e7eb; color: #374151; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em;" title="Download all annotations as entities.json">Export Annotations</button>
+                        <label for="annotations-import-input" style="padding: 4px 10px; background: #e5e7eb; color: #374151; border-radius: 4px; cursor: pointer; font-size: 0.8em;" title="Replace all annotations from an entities.json file">Import Annotations</label>
+                        <input type="file" id="annotations-import-input" accept=".json" style="display: none;" onchange="importEntities(event)" />
+                    </div>
                 </div>
 
                 <!-- Binary Classification Schema Content -->

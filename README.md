@@ -1,84 +1,66 @@
 # RadCount
 
-Local LLM-powered radiology report analysis. Runs a browser UI for extracting structured clinical data from free-text reports, evaluating extraction quality against ground truth, and iterating on prompts. All inference runs locally via llama.cpp.
+Local, LLM-powered labelling of radiology reports. A browser UI lets you assign yes/no labels to free-text reports, generate those labels automatically with a local model, and score the model against your own ground truth. All inference runs on your machine via llama.cpp, so no report data leaves the computer.
 
 ![RadCount UI](docs/screenshot.png)
 
 ## Requirements
 
 - Windows 10 or 11
-- NVIDIA GPU with 8 GB+ VRAM
-- ~12 GB disk space for model and dependencies on first run
+- ~12 GB free disk (model and dependencies, first run only)
+- An NVIDIA GPU with 8 GB+ VRAM is recommended. No GPU is fine; inference falls back to CPU, just slower.
 
 ## Setup
 
-Double-click `setup.bat`. It will install Python if needed, then handle everything else automatically. Alternatively, run `python startup.py` if Python is already installed.
+Automatic: double-click `setup.bat`. It installs Python if missing, then runs `startup.py` to do the rest. The comments inside `setup.bat` explain each step.
 
-On first run, the script will:
-1. Create a virtual environment and install dependencies (including CUDA-accelerated PyTorch)
-2. Download llama.cpp (GPU build when possible)
-3. Download Meta-Llama-3.1-8B-Instruct (Q4_K_M quantisation, ~4.9 GB)
-4. Apply database migrations
-5. Start the Django server at `http://127.0.0.1:8000`
+Manual: if you already have Python 3.10 to 3.12, run `python startup.py` instead.
 
-Subsequent runs skip straight to step 5. The LLM server starts automatically on port 8080 when Django loads. Interrupted model downloads resume on the next run.
+On first run this creates a virtual environment, installs dependencies, downloads llama.cpp and the Meta-Llama-3.1-8B-Instruct model (~4.9 GB), applies migrations, and starts the server at http://127.0.0.1:8000. Later runs skip straight to launch, and interrupted downloads resume automatically. Open that URL in a browser once it starts.
 
-## Features
+## Importing reports
 
-The UI is a single page split into a left panel (report viewer, data controls) and a right panel (annotation tabs, extraction results).
+Reports load from a single CSV in `large_data/`. Any columns are allowed, but the last column must be the report text. See `large_data/demo_reports.csv` for the layout.
 
-### LLM Server Controls
+- In the UI: click Import CSV (or Replace). Export CSV downloads the current file.
+- By hand: drop your `.csv` into `large_data/`. Only one CSV is kept, so a new one replaces the old.
 
-Start and stop the llama.cpp server from the UI. Select which `.gguf` model to load (place additional models in `llm_models/`), set the context window size (512--32768 tokens), and adjust temperature.
+Step through reports with the Entry number box.
 
-### Data Import
+## Importing and exporting annotations
 
-Upload a CSV of radiology reports. One CSV at a time; uploading a new one replaces the old. Navigate entries by number. Toggle between JSON view (all fields) and report view (readable text with optional word indices for span selection).
+All annotations and ground truth live in one `entities.json` file at the project root: a JSON array with one object per report, indexed to the CSV rows. The first entry holds the shared list of classification labels.
 
-### Context Files
+- In the UI: use Export Annotations / Import Annotations at the top right of the annotation panel. Export downloads the `entities.json` file; Import replaces the current annotations from an `entities.json` file you choose.
+- By hand: copy an `entities.json` file into the project root (next to `manage.py`).
 
-Upload, create, edit, or delete `.txt` and `.json` files in the `Context/` directory. Files prefixed with `sys-` are treated as system prompts. All other files become user context. These are used for one-shot LLM queries via the generate button.
+Keep an `entities.json` file with the CSV it was made against so the entry indices line up.
 
-### Extraction Functions
+## Labelling reports
 
-Write Python filter functions that run against CSV data to produce smaller context files. Results are saved to `Context/` for use in LLM prompts. A debug console shows print output.
+The tabs across the top are different ground-truth schemas: Binary Classification (yes/no labels), Observations, Triplets, and Entities & Relations. They share the same workflow, shown here for Binary Classification:
 
-### Annotation Modes
+1. Add the labels you want under Classification Labels.
+2. Mark each label yes/no for the current report in the Ground Truth column.
+3. Click Extract Classifications (LLM) to auto-label the current report; results appear under Auto-Extracted.
+4. Move through reports with the Entry box; each report's labels load with it.
+5. Calculate Metrics runs the model across every report with ground truth and reports precision, recall, and F1.
 
-Four tabs cover different levels of extraction granularity. Each follows the same workflow: create ground truth manually, run LLM auto-extraction, compare results, and calculate metrics (precision, recall, F1).
+## Changing the prompt
 
-**Binary Classification** -- Assign yes/no labels to reports (e.g. "pneumonia present"). Define custom labels. Run LLM classification against the current report or batch process.
+Every extraction task has its own Edit Prompt button next to its extract button, in each schema tab. Use it to change the template, edit label or type definitions, or switch between saved variants. Binary Classification templates must contain the `{label}` and `{report_text}` placeholders. Prompts are stored in JSON files at the project root (for example `binary_classification_prompts.json`), which you can also edit directly.
 
-**Observations** -- Extract individual clinical findings as word-level spans. Select words in the report viewer to set ground truth, or let the LLM extract them. Metrics compare extracted spans against ground truth.
-
-**Triplets** -- Extract structured (observation, anatomical location, properties) tuples. Two-pass extraction: first identify observations, then resolve locations and properties. Metrics evaluate hard and soft matching.
-
-**Entities and Relations** -- Full knowledge-graph extraction. Two-stage pipeline: extract typed entities first (anatomy, observations with certainty, measurements), then extract typed relations between them (located_at, suggestive_of, modify, etc.). Supports multiple schemas:
-- RadGraph (generic radiology)
-- PET-CT Oncology (15 entity types, 14 relation types)
-- Custom user-defined schemas
-
-Switch the active schema from the UI. Create, edit, or delete schemas.
-
-### Prompt Management
-
-Each extraction mode has its own editable prompt templates. The UI tracks which prompt is active and lets you save, rename, or delete prompt variants. This is the primary mechanism for iterating on extraction quality.
-
-### Evaluation and Testing
-
-Run extraction on the current entry or across all entries with ground truth. Metrics are calculated per-entry and in aggregate (TP/FP/FN counts, precision, recall, F1). Each run can be logged as a test with its prompt, model, and results. Compare logged tests side-by-side or export all tests to CSV.
-
-## Project Structure
+## Project structure
 
 ```
-startup.py          One-click setup and launch
-setup.bat           Windows entry point (bootstraps Python)
-manage.py           Django management
-radcount/           Django project config
-llm_interface/      Main app (views, templates, LLM service)
-llm_models/         .gguf model files (gitignored)
-llama_cpp/          llama.cpp binaries (gitignored)
-Context/            LLM context files (gitignored)
-large_data/         Uploaded CSV files (gitignored)
-schemas.json        Entity/relation schema definitions
+setup.bat                             Windows entry point (bootstraps Python, runs startup.py)
+startup.py                            One-click setup and launch
+manage.py                             Django management
+radcount/                             Django project config
+llm_interface/                        App: views, template, LLM service
+large_data/                           Reports CSV (one at a time)
+entities.json                         Labels and ground truth
+binary_classification_prompts.json    Auto-labelling prompts
+llm_models/                           .gguf model files (gitignored)
+llama_cpp/                            llama.cpp binaries (gitignored)
 ```

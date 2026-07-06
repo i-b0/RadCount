@@ -16,6 +16,7 @@ urlpatterns = [
     path('delete/', views.delete_context, name='delete_context'),
     path('upload-large/', views.upload_large, name='upload_large'),
     path('delete-large/', views.delete_large, name='delete_large'),
+    path('export-large/', views.export_large, name='export_large'),
     path('csv-entry/', views.get_csv_entry, name='get_csv_entry'),
     path('save-csv-entry/', views.save_csv_entry_to_context, name='save_csv_entry_to_context'),
     path('extraction-functions/', views.get_extraction_functions, name='get_extraction_functions'),
