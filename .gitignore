@@ -54,3 +54,5 @@ Context/
 llama_server.pid
 llama_server.model
 llama_server.context_size
+large_data/
+entities.json
